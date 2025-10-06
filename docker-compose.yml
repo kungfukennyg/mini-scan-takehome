@@ -57,3 +57,17 @@ services:
     build:
       context: .
       dockerfile: ./cmd/scanner/Dockerfile
+
+  # Runs a reader of scanned data
+  reader:
+    depends_on:
+      db:
+        condition: service_healthy
+      mk-subscription:
+        condition: service_completed_successfully
+    environment:
+      PUBSUB_EMULATOR_HOST: pubsub:8085
+      PUBSUB_PROJECT_ID: test-project
+    build:
+      context: .
+      dockerfile: ./cmd/reader/Dockerfile

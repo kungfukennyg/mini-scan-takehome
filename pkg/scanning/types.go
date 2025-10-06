@@ -1,5 +1,9 @@
 package scanning
 
+import (
+	"encoding/json"
+)
+
 const (
 	Version = iota
 	V1
@@ -7,18 +11,26 @@ const (
 )
 
 type Scan struct {
-	Ip          string      `json:"ip"`
-	Port        uint32      `json:"port"`
-	Service     string      `json:"service"`
-	Timestamp   int64       `json:"timestamp"`
-	DataVersion int         `json:"data_version"`
-	Data        interface{} `json:"data"`
+	Ip          string `json:"ip"`
+	Port        uint32 `json:"port"`
+	Service     string `json:"service"`
+	Timestamp   int64  `json:"timestamp"`
+	DataVersion int    `json:"data_version"`
+	Data        any    `json:"data"`
 }
 
 type V1Data struct {
 	ResponseBytesUtf8 []byte `json:"response_bytes_utf8"`
 }
 
+func (v *V1Data) MarshalJSON() ([]byte, error) {
+	return json.Marshal(v.ResponseBytesUtf8)
+}
+
 type V2Data struct {
 	ResponseStr string `json:"response_str"`
+}
+
+func (v *V2Data) MarshalJSON() ([]byte, error) {
+	return json.Marshal(v.ResponseStr)
 }
