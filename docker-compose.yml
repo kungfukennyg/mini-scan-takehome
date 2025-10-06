@@ -29,6 +29,23 @@ services:
         condition: service_completed_successfully
     command: PUT http://pubsub:8085/v1/projects/test-project/subscriptions/scan-sub topic=projects/test-project/topics/scan-topic --ignore-stdin 
 
+  # Runs a postgres database
+  db:
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: scanning
+    build:
+      context: .
+      dockerfile: ./postgres/Dockerfile
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres", "-d", "scanning"]
+      interval: 5s
+      timeout: 10s
+      retries: 3
+
   # Runs the "scanner"
   scanner:
     depends_on:
