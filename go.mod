@@ -1,6 +1,8 @@
 module github.com/censys/scan-takehome
 
-go 1.20
+go 1.25
+
+toolchain go1.25.1
 
 require cloud.google.com/go/pubsub v1.33.0
 
