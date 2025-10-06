@@ -1,53 +1,51 @@
 # Mini-Scan
 
-Hello!
-
-As you've heard by now, Censys scans the internet at an incredible scale. Processing the results necessitates scaling horizontally across thousands of machines. One key aspect of our architecture is the use of distributed queues to pass data between machines.
+Mini-Scan provides a simple toy implementation of a pubsub-driven service scanning system. It consists of a scanner that simulates scanning live services and publishing the results to a pubsub topic. Readers then subscribe to the topic and store the results in a database. Readers can be horizontally scaled to any arbitrary number of instances. The database stores the latest response for a given service + ip + port combination. 
 
 ---
 
-The `docker-compose.yml` file sets up a toy example of a scanner. It spins up a Google Pub/Sub emulator, creates a topic and subscription, and publishes scan results to the topic. It can be run via `docker compose up`.
+## Running the system locally
 
-Your job is to build the data processing side. It should:
+A docker-compose file is provided to run the system locally. A postgres database has been provided for the persistence layer, but this can be replaced with any other database by implementing the `Scanning` interface in `pkg/db/db_scan.go` and passing the database URL via the `-db-url` flag.
 
-1. Pull scan results from the subscription `scan-sub`.
-2. Maintain an up-to-date record of each unique `(ip, port, service)`. This should contain when the service was last scanned and a string containing the service's response.
+The system can be run locally by running:
+```bash
+docker compose up
+```
 
-> **_NOTE_**
-> The scanner can publish data in two formats, shown below. In both of the following examples, the service response should be stored as: `"hello world"`.
->
-> ```javascript
-> {
->   // ...
->   "data_version": 1,
->   "data": {
->     "response_bytes_utf8": "aGVsbG8gd29ybGQ="
->   }
-> }
->
-> {
->   // ...
->   "data_version": 2,
->   "data": {
->     "response_str": "hello world"
->   }
-> }
-> ```
+This will start the postgres database, the pubsub emulator, and the scanner and reader services.
 
-Your processing application should be able to be scaled horizontally, but this isn't something you need to actually do. The processing application should use `at-least-once` semantics where ever applicable.
+The scanner will publish scan results to the pubsub topic every second. The reader will subscribe to the topic and store the results in the database.
 
-You may write this in any languages you choose, but Go would be preferred.
+The system can be stopped by running:
 
-You may use any data store of your choosing, with `sqlite` being one example. Like our own code, we expect the code structure to make it easy to switch data stores.
+```bash
+docker compose down
+```
 
-Please note that Google Pub/Sub is best effort ordering and we want to keep the latest scan. While the example scanner does not publish scans at a rate where this would be an issue, we expect the application to be able to handle extreme out of orderness. Consider what would happen if the application received a scan that is 24 hours old.
+## Scaling the system
 
----
+The system can be scaled by running multiple reader instances.
 
-Please upload the code to a publicly accessible GitHub, GitLab or other public code repository account. This README file should be updated, briefly documenting your solution. Like our own code, we expect testing instructions: whether it’s an automated test framework, or simple manual steps.
+```bash
+docker compose scale reader=3
+```
 
-To help set expectations, we believe you should aim to take no more than 4 hours on this task.
+## Why Postgres?
 
-We understand that you have other responsibilities, so if you think you’ll need more than 5 business days, just let us know when you expect to send a reply.
+Postgres was chosen because its conflict resolution capabilities allow for conditionally inserting/updating scan results in a single atomic SQL operation. In essence the problem is we want to insert a scan result if it doesn't exist, or update it if it does and *the updated scan result is more recent than the existing one.* With Postgres we can define our primary key to be a composite key of the service, ip, and port, and use the `ON CONFLICT` clause alongside a conditional `WHERE` clause to achieve atomic updates in one statement:
 
-Please don’t hesitate to ask any follow-up questions for clarification.
+```sql
+INSERT INTO scans AS s (ipv4_addr, port, service, resp, updated_at) -- write the results
+VALUES (@ipv4_addr, @port, @service, @resp, to_timestamp(@updated_at))
+ON CONFLICT (ipv4_addr, port, service) DO UPDATE SET --however if the scan result already exists
+	resp = EXCLUDED.resp, -- update the service response
+	updated_at = EXCLUDED.updated_at
+WHERE EXCLUDED.updated_at > s.updated_at -- but only if the updated scan result is more recent than the existing one
+```
+
+If, for example, we had chosen SQLlite instead, then we would not have access to this same conflict resolution behavior. SQLlite does support an `INSERT OR REPLACE` statement, but it does not support conditionally updating the record. We would need to wrap multiple statements in a transaction and perform the logic within our application code to achieve the same result. 
+
+## Testing
+
+Manual verification was performed by running the system locally and checking the database for the latest scan result for a given service + ip + port combination. Automated tests were not implemented due to time constraints.
