@@ -36,6 +36,18 @@ docker compose scale reader=3
 Postgres was chosen because its conflict resolution capabilities allow for conditionally inserting/updating scan results in a single atomic SQL operation. In essence the problem is we want to insert a scan result if it doesn't exist, or update it if it does and *the updated scan result is more recent than the existing one.* With Postgres we can define our primary key to be a composite key of the service, ip, and port, and use the `ON CONFLICT` clause alongside a conditional `WHERE` clause to achieve atomic updates in one statement:
 
 ```sql
+CREATE TABLE IF NOT EXISTS scans ( -- define the table and indices
+    ipv4_addr INET NOT NULL,
+    port INT NOT NULL,
+    service TEXT NOT NULL,
+    resp TEXT NOT NULL,
+    updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (ipv4_addr, port, service) -- composite primary key
+);
+CREATE INDEX IF NOT EXISTS idx_scans_updated_at ON scans (updated_at);
+CREATE INDEX IF NOT EXISTS idx_scans_ipv4_addr_port_service ON scans (ipv4_addr, port, service);
+CREATE INDEX IF NOT EXISTS idx_scans_updated_at_ipv4_addr_port_service ON scans (updated_at, ipv4_addr, port, service);
+
 INSERT INTO scans AS s (ipv4_addr, port, service, resp, updated_at) -- write the results
 VALUES (@ipv4_addr, @port, @service, @resp, to_timestamp(@updated_at))
 ON CONFLICT (ipv4_addr, port, service) DO UPDATE SET --however if the scan result already exists
