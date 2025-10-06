@@ -3,20 +3,36 @@ package db
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/censys/scan-takehome/pkg/scanning"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// Scanning is an interface that defines the methods for a database that can store service scan
+// results.
 type Scanning interface {
 	Upsert(ctx context.Context, scan scanning.Scan) error
 }
 
+// PostgresScanning contains a connection pool to a postgres database and implements the [Scanning]
+// interface.
 type PostgresScanning struct {
 	pool *pgxpool.Pool
 }
 
+// NewDatabase creates a new [Scanning] instance based on the database URL.
+// It currently only supports postgres databases, but this can be extended to support other types.
+func NewDatabase(ctx context.Context, dbUrl string) (Scanning, error) {
+	if strings.HasPrefix(dbUrl, "postgres://") {
+		return NewPostgresScanning(ctx, dbUrl)
+	}
+
+	return nil, fmt.Errorf("unsupported database URL: %s", dbUrl)
+}
+
+// NewPostgresScanning creates a new [PostgresScanning] instance.
 func NewPostgresScanning(ctx context.Context, dbUrl string) (Scanning, error) {
 	pool, err := pgxpool.New(ctx, dbUrl)
 	if err != nil {

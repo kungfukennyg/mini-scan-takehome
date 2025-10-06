@@ -24,25 +24,27 @@ func main() {
 	)
 
 	ctx := context.Background()
-	if err := subscribeScans(ctx, *dbUrl, *projectId, *subscriptionId); err != nil {
+
+	log.Printf("connecting to database '%s'...\n", *dbUrl)
+	db, err := db.NewDatabase(ctx, *dbUrl)
+	if err != nil {
+		log.Fatalf("failed to connect to database: %v", err)
+	}
+	log.Println("connected")
+
+	if err := subscribeScans(ctx, db, *projectId, *subscriptionId); err != nil {
 		log.Printf("failed to subscribe to read scans: %v", err)
 		os.Exit(1)
 	}
 }
 
+// subscribeScans subscribes to the pubsub topic and passes scan results to the persistence layer.
 func subscribeScans(
 	ctx context.Context,
-	dbUrl string,
+	db db.Scanning,
 	projectId string,
 	subscriptionId string,
 ) error {
-	log.Printf("connecting to database '%s'...\n", dbUrl)
-	db, err := db.NewPostgresScanning(ctx, dbUrl)
-	if err != nil {
-		return fmt.Errorf("failed to connect to database: %w", err)
-	}
-	log.Println("connected")
-
 	client, err := pubsub.NewClient(ctx, projectId)
 	if err != nil {
 		return fmt.Errorf("failed to connect to pubsub: %w", err)
@@ -66,12 +68,11 @@ func subscribeScans(
 	return nil
 }
 
+// handleScan decodes a scan's results and passes them to the persistence layer.
 func handleScan(ctx context.Context, db db.Scanning, m *pubsub.Message) error {
 	var scan scanning.Scan
 	if err := json.Unmarshal(m.Data, &scan); err != nil {
-		log.Printf("failed to unmarshal scan: %v", err)
-		m.Nack()
-		return err
+		return fmt.Errorf("failed to unmarshal scan: %w", err)
 	}
 
 	log.Printf("received scan: %+v\n", scan)
@@ -100,7 +101,6 @@ func handleScan(ctx context.Context, db db.Scanning, m *pubsub.Message) error {
 	}
 
 	log.Printf("decoded scan: %+v\n", scan)
-
 	if err := db.Upsert(ctx, scan); err != nil {
 		return fmt.Errorf("failed to upsert scan: %w", err)
 	}
