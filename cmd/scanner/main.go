@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"log"
 	"math/rand"
 	"time"
 
@@ -30,7 +31,6 @@ func main() {
 	topic := client.Topic(*topicId)
 
 	for range time.Tick(time.Second) {
-
 		scan := &scanning.Scan{
 			Ip:        fmt.Sprintf("1.1.1.%d", rand.Intn(255)),
 			Port:      uint32(rand.Intn(65535)),
@@ -53,6 +53,7 @@ func main() {
 			panic(err)
 		}
 
+		log.Printf("publishing scan: %+v\n", scan)
 		_, err = topic.Publish(ctx, &pubsub.Message{Data: encoded}).Get(ctx)
 		if err != nil {
 			panic(err)
